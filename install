@@ -1,0 +1,104 @@
+#!/usr/bin/env ruby
+
+module Tty extend self
+  def blue; bold 34; end
+  def white; bold 39; end
+  def red; underline 31; end
+  def reset; escape 0; end
+  def bold n; escape "1;#{n}" end
+  def underline n; escape "4;#{n}" end
+  def escape n; "\033[#{n}m" if STDOUT.tty? end
+end
+
+class Array
+  def shell_s
+    cp = dup
+    first = cp.shift
+    cp.map{ |arg| arg.gsub " ", "\\ " }.unshift(first) * " "
+  end
+end
+
+def ohai *args
+  puts "#{Tty.blue}==>#{Tty.white} #{args.shell_s}#{Tty.reset}"
+end
+
+def warn warning
+  puts "#{Tty.red}Warning#{Tty.reset}: #{warning.chomp}"
+end
+
+def system *args
+  abort "Failed during: #{args.shell_s}" unless Kernel.system(*args)
+end
+
+def sudo *args
+  ohai "/usr/bin/sudo", *args
+  system "/usr/bin/sudo", *args
+end
+
+def getc  # NOTE only tested on OS X
+  system "/bin/stty raw -echo"
+  if STDIN.respond_to?(:getbyte)
+    STDIN.getbyte
+  else
+    STDIN.getc
+  end
+ensure
+  system "/bin/stty -raw echo"
+end
+
+def wait_for_user
+  puts
+  puts "Press RETURN to continue or any other key to abort"
+  c = getc
+  # we test for \r and \n because some stuff does \r instead
+  abort unless c == 13 or c == 10
+end
+
+def brew_install(pkg)
+  `brew install pkg` unless `brew ls -1`.match(pkg)
+end
+
+# Invalidate sudo timestamp before exiting
+at_exit { Kernel.system "/usr/bin/sudo", "-k" }
+
+####################################################################### script
+
+# ensure homebrew is installed
+abort <<-EOABORT unless `command -v brew` && $?.success?
+Homebrew doesn't appear to be installed. Try running:
+
+    ruby -e "$(curl -fsSkL raw.github.com/mxcl/homebrew/go)"
+
+EOABORT
+
+# Get credentials
+
+# setup git
+ohai "Okay, now hang on while I install some necessary homebrew formulas..."
+ohai "Installing git..."
+brew_install('git')
+
+print "Please enter your full name: "
+name = gets.chomp.strip
+print "Please enter your email address: "
+email = gets.chomp.strip
+print "Please enter your github username: "
+username = gets.chomp.strip
+
+ohai "Setting ~/.gitconfig with the following values:"
+ohai "user.name: #{name}"
+`git config --global user.name #{name}`
+ohai "user.email: #{email}"
+`git config --global user.email #{email}`
+ohai "github.username: #{username}"
+`git config --global github.username #{username}`
+
+# TODO: get github token
+
+# setup philote
+ohai "Installing philote..."
+`brew tap primedia/philote`
+brew_install('philote')
+
+`philote install`
+
